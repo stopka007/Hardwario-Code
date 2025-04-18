@@ -7,9 +7,6 @@
 #define ACCELEROMETER_UPDATE_SERVICE_INTERVAL (200)
 #define ACCELEROMETER_UPDATE_NORMAL_INTERVAL (200)
 
-// Device ID variable
-const char *id_device = "0123";
-
 // LED instance
 twr_led_t led;
 
@@ -48,23 +45,24 @@ float last_static_magnitude = 1.0f;  // Initialize to normal gravity
 void log_json_with_device_id(const char *key, const char *value)
 {
     char json_message[100];
-    snprintf(json_message, sizeof(json_message), "{\"device_id\":\"%s\",\"%s\":\"%s\"}", id_device, key, value);
+    snprintf(json_message, sizeof(json_message), "{\"id_device\":\"%llx\",\"%s\":\"%s\"}", twr_radio_get_my_id(), key, value);
     twr_log_info("%s", json_message);
 }
 
-void log_json_with_device_id_int(const char *key, int value)
-{
-    char json_message[100];
-    snprintf(json_message, sizeof(json_message), "{\"device_id\":\"%s\",\"%s\":%d}", id_device, key, value);
-    twr_log_info("%s", json_message);
-}
+//void log_json_with_device_id_int(const char *key, int value) UZITECNA JEN POKUD BUDEM CHTIT DURATION ZMACKNUTI
+//{
+//    char json_message[100];
+//    snprintf(json_message, sizeof(json_message), "{\"id_device\":\"%llx\",\"%s\":%d}", twr_radio_get_my_id(), key, value);
+//    twr_log_info("%s", json_message);
+//}
 
 void log_json_with_device_id_float(const char *key, float value)
 {
     char json_message[100];
-    snprintf(json_message, sizeof(json_message), "{\"device_id\":\"%s\",\"%s\":%.2f}", id_device, key, value);
+    snprintf(json_message, sizeof(json_message), "{\"id_device\":\"%llx\",\"%s\":%.2f}", twr_radio_get_my_id(), key, value);
     twr_log_info("%s", json_message);
 }
+
 
 
 // This function dispatches button events
@@ -75,10 +73,8 @@ void button_event_handler(twr_button_t *self, twr_button_event_t event, void *ev
         // Pulse LED for 100 milliseconds
         twr_led_pulse(&led, 100);
 
-        // Increment press count
-        button_click_count++;
+        log_json_with_device_id("button_click", "true");
 
-        log_json_with_device_id_int("button_click_count", button_click_count);
 
     }
     else if (event == TWR_BUTTON_EVENT_HOLD)
@@ -86,10 +82,7 @@ void button_event_handler(twr_button_t *self, twr_button_event_t event, void *ev
         // Pulse LED for 250 milliseconds
         twr_led_pulse(&led, 250);
 
-        // Increment hold count
-        button_hold_count++;
-
-        log_json_with_device_id_int("button_hold_count", button_hold_count);
+        log_json_with_device_id("button_hold", "true");
 
         // Set button hold event flag
         button_hold_event = true;
@@ -102,22 +95,21 @@ void button_event_handler(twr_button_t *self, twr_button_event_t event, void *ev
 
         tick_start_button_press = twr_tick_get();
     }
-    else if (event == TWR_BUTTON_EVENT_RELEASE)
-    {
-        if (button_hold_event)
-        {
-            int hold_duration = twr_tick_get() - tick_start_button_press;
-
-            log_json_with_device_id_int("button_hold_duration", hold_duration);
-        }
-    }
+    //else if (event == TWR_BUTTON_EVENT_RELEASE)
+    //{
+    //    if (button_hold_event)
+    //    {
+    //        int hold_duration = twr_tick_get() - tick_start_button_press;
+    //        log_json_with_device_id_int("button_hold_duration", hold_duration);
+    //    }
+    //}   FUNKCE NA POCITANI DURATION ZMACKNUTI
 }
 
 float battery_voltage_to_percentage(float voltage)
 {
     // Define voltage range for 1.5V AAA alkaline battery
     const float voltage_max = 3.1f;  // Fresh battery voltage
-    const float voltage_min = 2.0f;  // Considered "empty" for most devices
+    const float voltage_min = 1.5f;  // Considered "empty" for most devices
     
     // Constrain voltage to min/max range
     if (voltage > voltage_max) voltage = voltage_max;
@@ -181,10 +173,6 @@ void lis2dh12_event_handler(twr_lis2dh12_t *self, twr_lis2dh12_event_t event, vo
             // Check for sudden acceleration change
             if (!monitoring_static && acc_magnitude < acceleration_threshold) 
             {
-                // Sudden acceleration detected
-                log_json_with_device_id("event", "sudden_acceleration_detected");
-                log_json_with_device_id_float("acc_magnitude", acc_magnitude);
-                
                 acceleration_time = current_time;
                 monitoring_static = true;
                 static_start_time = 0;  // Will be set when we start detecting static position
@@ -206,8 +194,7 @@ void lis2dh12_event_handler(twr_lis2dh12_t *self, twr_lis2dh12_event_t event, vo
                     // Check if static for long enough duration
                     else if ((current_time - static_start_time) >= static_duration) 
                     {
-                        log_json_with_device_id("event", "patient fell");
-                        
+                        log_json_with_device_id("patient_fell", "true");
                         
                         // Reset monitoring state
                         monitoring_static = false;
@@ -271,6 +258,9 @@ void application_init(void)
     twr_lis2dh12_init(&lis2dh12, TWR_I2C_I2C0, 0x19);
     twr_lis2dh12_set_event_handler(&lis2dh12, lis2dh12_event_handler, NULL);
     twr_lis2dh12_set_update_interval(&lis2dh12, ACCELEROMETER_UPDATE_SERVICE_INTERVAL);
+
+    // Initialize Radio
+    twr_radio_init(TWR_RADIO_MODE_NODE_SLEEPING);
 
     // Initialize USB
     twr_usb_cdc_init();
